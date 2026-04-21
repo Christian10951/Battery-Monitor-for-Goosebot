@@ -1,0 +1,87 @@
+// ============================================================
+//  Battery Monitor — Arduino Project
+//  Reads a 12V battery's voltage and displays it on an LCD screen.
+// ============================================================
+
+#include <Wire.h>              // Allows the Arduino to communicate over I2C (a two-wire protocol)
+#include <LiquidCrystal_I2C.h> // Library for controlling an I2C-connected LCD screen
+
+// Set up the LCD screen: I2C address 0x27, 16 columns, 2 rows
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// ── Pin Assignments ─────────────────────────────────────────
+const int batteryPin = A0;   // Analog pin that reads the voltage divider output
+
+// ── Calibration Constants ────────────────────────────────────
+// The voltage divider uses a 20kΩ and 3.3kΩ resistor to safely
+// scale down the 12V battery voltage so the Arduino can read it.
+float voltageDividerRatio = 7.06; // Multiply the scaled voltage by this to get the real battery voltage
+
+// The Arduino reads voltages between 0V and 5V on its analog pins
+float referenceVoltage = 5.0;
+
+// ── Battery Voltage Range ────────────────────────────────────
+// These define what counts as "full" and "empty" for a 12V Li-ion battery
+float maxVoltage = 12.6; // Voltage when the battery is fully charged (100%)
+float minVoltage = 10.5; // Voltage when the battery is considered empty (0%)
+
+
+// ============================================================
+//  SETUP — Runs once when the Arduino is powered on
+// ============================================================
+void setup()
+{
+  Serial.begin(9600); // Start serial communication so we can view data in the Serial Monitor
+
+  lcd.init();         // Initialize the LCD screen
+  lcd.backlight();    // Turn on the LCD backlight so the text is visible
+}
+
+
+// ============================================================
+//  LOOP — Runs repeatedly, once every second
+// ============================================================
+void loop()
+{
+  // ── Step 1: Read the Raw Sensor Value ──────────────────────
+  // The analog pin returns a number from 0–1023, representing 0V–5V
+  int sensorValue = analogRead(batteryPin);
+
+  // ── Step 2: Convert to the Voltage at the Divider ──────────
+  // Scale the 0–1023 reading back into a voltage between 0V and 5V
+  float dividerVoltage = sensorValue * (referenceVoltage / 1023.0);
+
+  // ── Step 3: Recover the True Battery Voltage ───────────────
+  // Undo the voltage divider's scaling to get the actual battery voltage
+  float batteryVoltage = dividerVoltage * voltageDividerRatio;
+
+  // ── Step 4: Calculate Battery Percentage ───────────────────
+  // Map the battery voltage onto a 0–100% scale based on our min/max range
+  int batteryPercent = ((batteryVoltage - minVoltage) / (maxVoltage - minVoltage)) * 100;
+
+  // Clamp the result to 0–100 so it never shows impossible values like -5% or 110%
+  batteryPercent = constrain(batteryPercent, 0, 100);
+
+  // ── Step 5: Update the LCD Display ─────────────────────────
+  lcd.clear();               // Wipe the previous reading from the screen
+
+  lcd.setCursor(0, 0);       // Move to the first column of the top row
+  lcd.print("Voltage:");
+  lcd.print(batteryVoltage, 2); // Show voltage rounded to 2 decimal places
+  lcd.print("V");
+
+  lcd.setCursor(0, 1);       // Move to the first column of the bottom row
+  lcd.print("Battery:");
+  lcd.print(batteryPercent);
+  lcd.print("%");
+
+  // ── Step 6: Print Debug Info to the Serial Monitor ─────────
+  // Useful for checking readings on a computer while the Arduino is running
+  Serial.print("RAW ADC: ");            Serial.print(sensorValue);
+  Serial.print(" | Divider Voltage: "); Serial.print(dividerVoltage);  Serial.print(" V");
+  Serial.print(" | Battery Voltage: "); Serial.print(batteryVoltage);  Serial.print(" V");
+  Serial.print(" | Battery %: ");       Serial.print(batteryPercent);  Serial.println("%");
+
+  // ── Wait 1 Second Before the Next Reading ──────────────────
+  delay(1000);
+}
